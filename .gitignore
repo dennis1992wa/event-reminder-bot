@@ -6,6 +6,7 @@ venv/
 .env
 data/.env
 data/state.json
+data/event.csv
 data/event.csv.bak
 dist/
 *.bak

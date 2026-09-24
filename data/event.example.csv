@@ -1,0 +1,4 @@
+id,people,status,expires_on,early_remind_months,event,type,amount,currency,paid_on,note
+R001,你的名稱,active,2026-12-31,,電訊合同,合同,,,,
+R002,朋友A,active,2027-01-31,,Spotify,代付年度訂閱,258.56,HKD,2026-01-31,已付一年；到期向朋友收下一年費用
+R003,你的名稱,active,2027-03-31,2,車輛年檢,車輛年檢,,,,到期前 book 檢查

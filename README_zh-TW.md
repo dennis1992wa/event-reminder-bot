@@ -98,7 +98,7 @@ docker compose up -d
 |---|---|
 | `bot.py` | 每日迴圈、發送器接線、訊息發出 |
 | `event_reminder.py` | 核心邏輯：排程、CSV 儲存、狀態、發送器 |
-| `data/event.csv` | 真實資料（最初 seed，之後由用家維護） |
+| `data/event.csv` | 真實資料（用家維護；**不入 git** — 模板見 `data/event.example.csv`） |
 | `data/state.json` | 每行已發送點狀態（首次執行後建立） |
 | `data/.env` | 憑證／設定（永不 commit） |
 | `.env.example` | 設定範本 |

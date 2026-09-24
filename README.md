@@ -140,7 +140,7 @@ list them comma-separated — one email is sent to all of them:
 |---|---|
 | `bot.py` | daily loop, sender wiring, message dispatch |
 | `event_reminder.py` | core logic: planner, CSV store, state, senders |
-| `data/event.csv` | source of truth (initially seeded; user-maintained since) |
+| `data/event.csv` | source of truth (your personal data — git-ignored; a template lives at `data/event.example.csv`) |
 | `data/state.json` | per-row sent-point state (created at first run) |
 | `data/.env` | credentials/config (never committed) |
 | `.env.example` | config template |
