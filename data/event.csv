@@ -1,0 +1,9 @@
+id,people,status,expires_on,early_remind_months,event,type,amount,currency,paid_on,note
+R008,Dennis,active,2026-12-01,2,Road tax,,,,,等收信課金Road tax
+R001,Dennis,active,2026-12-19,,OVO Energy,合同,,,,
+R007,Dennis,active,2026-12-19,3,MOT年度檢查,車輛年檢,,,,要book MOT檢查
+R003,Hobbit,active,2026-12-31,,Spotify,代付年度訂閱,258.56,HKD,2025-12-31,已付一年係2025-12-31;到期向朋友收下一年費用
+R004,Jason Lou,active,2027-02-23,,Spotify,代付年度訂閱,258.56,HKD,2026-02-23,已付一年係2026-02-23;到期向朋友收下一年費用
+R005,Alexson,active,2027-05-01,,Spotify,代付年度訂閱,258.56,HKD,2026-05-01,已付一年係2026-05-01;到期向朋友收下一年費用
+R002,Dennis,active,2028-03-10,3,Virgin Media,合同,,,,
+R006,Angel / Alexson / 雄少,active,2028-03-17,,NordVPN,共享訂閱,,,,

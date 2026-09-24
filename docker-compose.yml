@@ -1,0 +1,14 @@
+services:
+  event-reminder-bot:
+    build: .
+    container_name: event-reminder-bot
+    restart: unless-stopped
+    env_file: ./data/.env
+    environment:
+      DATA_DIR: /app/data
+      # Override container paths to the mounted dir
+      EVENT_CSV: /app/data/event.csv
+      STATE_JSON: /app/data/state.json
+      TZ: ${TZ_NAME:-Europe/London}
+    volumes:
+      - ./data:/app/data
