@@ -84,6 +84,7 @@ Example: `early_remind_months = 2`, `expires_on = 2027-03-10` → points: 2027-0
 
 - If on a given check day **two or more notifications are due** (same run, any mix of standard / immediate / catch-up), **merge them into ONE email and ONE Telegram message** — do not send one per row.
 - Grouping is by **check day**, not by expiry date: rows due on the same run go into the same message even if their `expires_on` differ.
+- **Row order inside a grouped message: ascending by `expires_on`** (soonest-expiring first; same `expires_on` → stable by `id`).
 - Message format: one line per row, e.g.:
 
 ```
@@ -126,7 +127,7 @@ Must be tested with fake dates (no real tokens) before deploy:
 3. Missed days (simulated NAS downtime) → single collapsed catch-up message listing missed offsets, then normal cadence.
 4. `expires_on` changed mid-cycle → old cycle voided, new cycle (standard + any early points) on new dates, no notification at the moment of change.
 5. Row deleted / set `inactive` → no further notifications.
-6. Two rows due on the same day → exactly one Telegram message + one email, both containing both rows, in id order.
+6. Two rows due on the same day → exactly one Telegram message + one email, both containing both rows, ordered by nearest `expires_on` (ties by `id`).
 7. After each run, CSV is re-sorted ascending by `expires_on`, `inactive` at bottom, values otherwise unchanged, `.bak` created.
 
 Worked example: OVO expires 2026-12-19 → notifications fire 2026-11-19 (30), 2026-11-28 (21), 2026-12-05 (14), 2026-12-12 (7), 2026-12-15 (4), 2026-12-19 (0).

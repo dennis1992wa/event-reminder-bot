@@ -19,13 +19,13 @@ python3 -m unittest discover -s tests -v
 | 5 | Row deleted / `inactive` → silent; state pruned | `TestInactiveOrDeleted` |
 | 6 | New row: ≤ threshold → one immediate + remaining future points; > threshold → silent; passed early points never back-filled | `TestNewRow` |
 | 7 | CSV re-sort: order, `.bak`, byte-identical values, header intact | `TestCsvStoreReSort` |
-| + | Two rows due same run → exactly ONE Telegram + ONE email, both rows in id order | `TestGrouping` |
+| + | Two rows due same run → exactly ONE Telegram + ONE email, rows ordered by nearest expires_on | `TestGrouping` |
 | + | One channel failing does not suppress the other | `TestSenderIndependence` |
 | + | 11:00 run resolves in the correct UK offset across the 2026 spring-forward (03-29) and autumn-back (10-25) | `TestDst` |
 | + | `MAIL_TO` multi-recipient parse (comma-separated, blanks dropped) and `SMTP_USE_SSL` flag | `TestEmailRecipients` |
 | + | On-demand trigger files: `consume_trigger` / `consume_trigger_dry` in `bot.py` | `TestRunTrigger` |
 
-Last full run: **30/30 OK**.
+Last full run: **37/37 OK**.
 
 Test conventions:
 - Fake dates are passed straight into `CyclePlanner(today)` / `run_pass` —

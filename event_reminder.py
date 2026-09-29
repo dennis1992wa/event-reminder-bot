@@ -27,7 +27,9 @@ import tempfile
 import urllib.request
 from dataclasses import dataclass, field
 from datetime import date, timedelta
-from email.message import EmailMessage
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from html import escape
 from typing import Optional
 
 # ---------------------------------------------------------------------------
@@ -321,24 +323,132 @@ class StateStore:
 # MessageBuilder
 # ---------------------------------------------------------------------------
 
+# Urgency colours (4-level): 🔴 today · 🟠 ≤4 days · 🟡 ≤30 days · 🔵 >30 days
+_URGENCE = [
+    # (emoji, badge hex, badge text colour)
+    ("🔴", "#e53935", "#ffffff"),
+    ("🟠", "#fb8c00", "#ffffff"),
+    ("🟡", "#fdd835", "#212121"),
+    ("🔵", "#1e88e5", "#ffffff"),
+]
+
+
+def urgency_for_days(days_to_expiry: int) -> tuple[str, str, str]:
+    """Pick (emoji, bg_hex, fg_hex) for a remaining-days count."""
+    if days_to_expiry <= 0:
+        return _URGENCE[0]
+    if days_to_expiry <= 4:
+        return _URGENCE[1]
+    if days_to_expiry <= 30:
+        return _URGENCE[2]
+    return _URGENCE[3]
+
+
 class MessageBuilder:
     @staticmethod
-    def build(check_date: date, infos: list[tuple[str, EventRecord, DueInfo]]):
-        """infos: list of (row_id, record, due_info) in CSV order.
-        Returns (telegram_text, email_subject, email_body)."""
-        lines = [f"事件提醒 — {check_date.isoformat()}"]
+    def _entry(rec: EventRecord, check_date: date, catchup: bool) -> tuple[str, str]:
+        """Return (plain line without emoji, html block) for one due row."""
+        days = (rec.expires_on_date - check_date).days if rec.expires_on_date else 0
+        due = "今日到期" if days == 0 else f"即將{days}日後到期"
+        line = (
+            f"ID: {rec.id} | {rec.people} | 事件: {rec.event} | "
+            f"到期日: {rec.expires_on} | {due}"
+        )
+        note = rec.note.strip()
+
+        # HTML entry: 事件 line fully bold (incl. label), ID plain,
+        # 到期日 line bold, N-day count bold + underlined + light-yellow
+        # highlight (#ffe082) for every urgency band.
+        if days == 0:
+            due_html = "<b>今日到期</b>"
+        else:
+            due_html = (
+                f"即將<span style=\"background:#ffe082; padding:0 2px;\">"
+                f"<u><b>{days}日</b></u></span>後到期"
+            )
+        parts = [
+            f"ID: {escape(rec.id)} | {escape(rec.people)} | "
+            f"<b>事件: {escape(rec.event)}</b>",
+            f"<b>到期日: {escape(rec.expires_on)}</b> · {due_html}",
+        ]
+        if catchup:
+            parts.append(' <b style="color:#e53935;">⚠️ 補發</b>')
+        html_block = "<br>".join(parts)
+        if note:
+            html_block += (
+                f'<br><span style="color:#80868b; font-size:12px;">'
+                f"{escape(note)}</span>"
+            )
+        return line, html_block
+
+    @staticmethod
+    def _entries(infos: list[tuple[str, EventRecord, DueInfo]], check_date: date):
+        out = []
         for _rid, rec, info in infos:
-            days = (rec.expires_on_date - check_date).days
-            due = "今日到期" if days == 0 else f"即將{days}日後到期"
-            seg = f"ID: {rec.id} | {rec.people} | 事件: {rec.event} | 到期日: {rec.expires_on} | {due}"
+            days = (rec.expires_on_date - check_date).days if rec.expires_on_date else 0
+            emoji, bg, fg = urgency_for_days(days)
+            line, html_block = MessageBuilder._entry(
+                rec, check_date, info.kind == "catch-up")
             if info.kind == "catch-up":
-                seg += " | 補發"
-            if rec.note:
-                seg += f" | {rec.note}"
-            lines.append(seg)
-        text = "\n".join(lines)
-        subject = f"事件提醒 {check_date.isoformat()}"
-        return text, subject, text
+                line += " | 補發"
+            if rec.note.strip():
+                line += f" | {rec.note.strip()}"
+            out.append((emoji, bg, fg, days, line, html_block))
+        return out
+
+    @staticmethod
+    def build(check_date: date, infos: list[tuple[str, EventRecord, DueInfo]]):
+        """infos: list of (row_id, record, due_info) in id order.
+        Returns (telegram_text, email_subject, (plain_body, html_body))."""
+        header = f"事件提醒 — {check_date.isoformat()}"
+        entries = MessageBuilder._entries(infos, check_date)
+
+        # Plain text: header line + one line per row, blank line between rows
+        # (same convention for Telegram and the email text fallback).
+        text_lines = [header]
+        for emoji, _bg, _fg, _days, line, _html in entries:
+            text_lines.append("")
+            text_lines.append(f"{emoji} {line}")
+        plain = "\n".join(text_lines)
+
+        subject = header
+
+        # HTML: title + one 2-column row per entry (vertically-centred badge
+        # | details), with a full-width dark divider row between entries
+        # (none after the last).
+        parts = [
+            '<p style="margin:0 0 10px; font-size:15px;">'
+            f"<b>{escape(header)}</b></p>",
+            '<table style="border-collapse:collapse; width:100%;">',
+        ]
+        for i, (emoji, _bg, _fg, days, _line, html_block) in enumerate(entries):
+            if i > 0:
+                parts.append(
+                    '<tr><td colspan="2" style="height:0; padding:0; '
+                    'border-top:2px solid #3c4043; '
+                    "border-bottom:none;\"></td></tr>"
+                )
+            badge = (
+                '<span style="background:#1f1f1f; color:#ffffff; '
+                f'border-radius:4px; padding:2px 8px; font-size:12px; '
+                f'display:inline-block;">{emoji} {days}日</span>'
+            )
+            parts.append(
+                "<tr>"
+                '<td style="vertical-align:middle; padding:2px 10px 2px 0; '
+                f'white-space:nowrap;">{badge}</td>'
+                f'<td style="vertical-align:top; line-height:1.35;">{html_block}</td>'
+                "</tr>"
+            )
+        parts.append("</table>")
+        html_body = (
+            '<div style="background:#ffffff; max-width:560px; margin:0; padding:16px; '
+            'color:#202124; font-size:14px; line-height:1.35; '
+            "font-family:-apple-system, 'Noto Sans SC', 'Noto Sans CJK SC', "
+            'sans-serif;">' + "".join(parts) + "</div>"
+        )
+
+        return plain, subject, (plain, html_body)
 
 
 # ---------------------------------------------------------------------------
@@ -401,16 +511,19 @@ class EmailSender:
         # encoded by smtplib and crashes on Chinese text.
         server.sendmail(self.sender_email, self.recipients, msg.as_bytes())
 
-    def send(self, subject: str, body: str) -> bool:
+    def send(self, subject: str, body: tuple[str, str]) -> bool:
+        """Send a multipart/alternative email: text/plain part first (fallback
+        for clients that ignore HTML) + text/html coloured part."""
+        plain, html = body
         try:
-            # EmailMessage encodes non-ASCII subject/body per RFC 2047/5322
-            # (plain string + sendmail would fail with an ascii codec error
-            # on Chinese text).
-            msg = EmailMessage()
+            # Multipart messages must be sent as raw bytes — a composed str
+            # would get ascii-encoded and crash on the Chinese text.
+            msg = MIMEMultipart("alternative")
             msg["From"] = self.sender_email
             msg["To"] = self.to_email
             msg["Subject"] = subject
-            msg.set_content(body)
+            msg.attach(MIMEText(plain, "plain", "utf-8"))
+            msg.attach(MIMEText(html, "html", "utf-8"))
             if self.use_ssl:
                 server = smtplib.SMTP_SSL(self.host, self.port, timeout=30)
             else:

@@ -39,8 +39,8 @@ points at N, N−0.5, … months (`early_remind_months`). Stdlib only.
 
 ## Rules (locked — see REQUIREMENTS.md §10 for acceptance behavior)
 
-- One grouped message per channel per run day; rows in id order. Fixed
-   line layout: `ID: {id} | {people} | 事件: {event} | 到期日: {expires_on} | 即將{days}日後到期`
+- One grouped message per channel per run day; rows ordered by nearest
+   `expires_on` (ties by `id`). Fixed line layout: `ID: {id} | {people} | 事件: {event} | 到期日: {expires_on} | 即將{days}日後到期`
   (+ `| {note}` when non-empty; due day = `| 今日到期`).
 - Missed days → single catch-up line per row ending `| 補發`, no
   retroactive timestamps.
@@ -63,7 +63,7 @@ Synology from this machine; verify with build + test here).
 
 ## Verification
 
-- `python3 -m unittest discover -s tests -v` → 30 tests, stdlib only, fake
+- `python3 -m unittest discover -s tests -v` → 37 tests, stdlib only, fake
   dates + in-memory senders (see TESTING.md).
 - Dry-run smoke: `DRY_RUN=1 OVERRIDE_TODAY=<date> python3 bot.py --once`.
   In a running container, `touch data/run-now` (or `data/run-now-dry`) asks

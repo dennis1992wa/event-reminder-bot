@@ -86,8 +86,8 @@ rebuilt and restarted:
    `data/.env` changes (it is baked into the container at startup, so
    `docker compose restart` alone is not enough).
 
-If deployment is confirmed and the project proves stable, bump `VERSION`
-to `1.0.0` and add a CHANGELOG entry.
+The project has reached `1.0.0` (2026-09-28): deployment confirmed
+stable, live reminder sends verified. See the CHANGELOG.
 
 ## Post-deployment verification
 

@@ -55,31 +55,57 @@ written before each save.
   Rows already past expiry are silent forever.
 - `inactive` or deleted rows are pruned from state silently.
 - Rows due on the same run are grouped: exactly ONE Telegram message and
-  ONE email, each containing both rows in id order.
+  ONE email, each containing all rows ordered by nearest `expires_on`
+  (soonest first; ties by `id`).
 - Telegram and email senders are **independent** — one failing does not
   suppress the other (the point is still recorded so it is not re-sent).
 
-### 3. Message format (Chinese, fixed layout)
+### 3. Message format (Chinese, fixed layout, emoji urgency)
+
+Each row is prefixed by an urgency emoji (Telegram and the email plain-text
+part — pure text, no Markdown/HTML in Telegram). Emojis render in system
+colour on Telegram (red/orange/yellow/blue) — the Bot API has no true
+color support, so emoji is the colour.
+
+| Emoji | Band | Meaning |
+|---|---|---|
+| 🔴 | 0 days | due today (`今日到期`) |
+| 🟠 | 1–4 days | imminent |
+| 🟡 | 5–30 days | approaching |
+| 🔵 | > 30 days | early-month point (`即將{N}日後到期`) |
 
 ```
 事件提醒 — 2026-11-19
-ID: R001 | Dennis | 事件: OVO Energy | 到期日: 2026-12-19 | 即將30日後到期
+🔴 ID: R003 | Hobbit | 事件: Spotify | 到期日: 2026-11-19 | 今日到期 | 補發 | 已代付一年（…）
+🟡 ID: R002 | Dennis, Hobbit | 事件: Virgin Media | 到期日: 2026-12-10 | 即將21日後到期
+🟠 ID: R001 | Dennis | 事件: OVO Energy | 到期日: 2026-12-19 | 即將4日後到期
+🔵 ID: R007 | Dennis | 事件: MOT | 到期日: 2027-02-15 | 即將88日後到期
 ```
 
-Each line is a fixed pipe-separated layout:
-`ID: {id} | {people} | 事件: {event} | 到期日: {expires_on} | 即將{days}日後到期`;
-when `note` is non-empty, `| {note}` is appended. The due-day line reads
-`| 今日到期`. A missed-days run is one line per row ending in `| 補發`
-(missed points collapse into that single line — no retroactive
-timestamps). The email subject is `事件提醒 — YYYY-MM-DD` and the body
-equals the Telegram text.
+Multi-row messages separate rows with one blank line (text) / a full-width
+dark divider row (email HTML). The layout itself is unchanged from the
+locked spec: `ID: {id} | {people} | 事件: {event} | 到期日: {expires_on} | 即將{days}日後到期`,
+with `| 補發` on missed runs and `| {note}` appended when present.
 
-Example of a row with a `note` (verified via dry-run):
+### 4. Email format (`multipart/alternative`)
 
-```
-事件提醒 — 2026-11-19
-ID: R001 | Dennis | 事件: OVO Energy | 到期日: 2026-12-19 | 即將30日後到期 | 到期向朋友收下一年費用
-```
+The email body is a `multipart/alternative` with two parts:
+
+1. `text/plain` — identical to the Telegram text (the spec layout above);
+2. `text/html` — white card (`max-width:560px`) on a grey page, with a
+   table: left column a vertically-centred **unified dark badge**
+   (background `#1f1f1f`, white text, emoji keeps its native colour —
+   🔴 🟠 🟡 🔵) carrying emoji + remaining-days; right column the details —
+   bold `事件: …` line, bold `到期日: …` line (ID left plain), the day count
+   in `即將{N}日後到期` bold + underlined with a light-yellow highlight
+   (`#ffe082`) for every urgency band, `⚠️ 補發` in red bold, `note` in grey
+   small text. A full-width dark divider row (`2px solid #3c4043`) sits
+   between events (none after the last).
+
+No external CSS/fonts are linked in the real email (the font stack falls
+back to the client's CJK fonts): `-apple-system, 'Noto Sans SC',
+'Noto Sans CJK SC', sans-serif`. The subject stays plain:
+`事件提醒 — YYYY-MM-DD` (no emoji).
 
 ## Usage / quick start
 
@@ -99,7 +125,7 @@ Run the test suite:
 python3 -m unittest discover -s tests -v
 ```
 
-All 30 acceptance tests use fake dates, in-memory senders, and the
+All 37 acceptance tests use fake dates, in-memory senders, and the
 standard library only — no network, no real tokens.
 
 ## Docker

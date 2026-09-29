@@ -34,17 +34,50 @@ id,people,status,expires_on,early_remind_months,event,type,amount,currency,paid_
 - 變更 `expires_on` 時，舊週期被靜默作廢並開始新週期。
 - 週期中間新增行：若超過門檻（N 個月，或空白時為 30 日）則保持靜默至最近未來的點；若在門檻內則先發一條「即將到期」即時通知，之後剩餘未來點照常進行。已到過期的行永久靜默。
 - `inactive`／已刪除的行會靜默從狀態中清除。
-- 同一次運行到期的多行合併為：恰好一條 Telegram 訊息 + 一條電郵，各含兩行、按 id 順序排列。
+- 同一次運行到期的多行合併為：恰好一條 Telegram 訊息 + 一條電郵，各含所有行，按 `expires_on` 由最近到期排到最遲到期（同一天者按 `id` 順序）。
 - Telegram 與電郵發送器**互不干預**：一方失敗不會壓制另一方（該點仍被記錄，不會重發）。
 
-### 3. 訊息格式（中文、固定格式）
+### 3. 訊息格式（中文、固定格式、emoji 緊急度）
+
+每行開頭加一個緊急度 emoji（Telegram 與電郵純文字部分均為純文字，Telegram 不
+使用 Markdown/HTML）；Telegram 上 emoji 會以系統顏色顯示（紅／橙／黃／藍）。
+
+| Emoji | 區間 | 含義 |
+|---|---|---|
+| 🔴 | 0 日 | 到期當日（`今日到期`）|
+| 🟠 | 1–4 日 | 迫在眉睫 |
+| 🟡 | 5–30 日 | 將近 |
+| 🔵 | 超過 30 日 | 月初早期提醒點（`即將{N}日後到期`）|
 
 ```
 事件提醒 — 2026-11-19
-ID: R001 | Dennis | 事件: OVO Energy | 到期日: 2026-12-19 | 即將30日後到期
+🔴 ID: R003 | Hobbit | 事件: Spotify | 到期日: 2026-11-19 | 今日到期 | 補發 | 已代付一年（…）
+🟡 ID: R002 | Dennis, Hobbit | 事件: Virgin Media | 到期日: 2026-12-10 | 即將21日後到期
+🟠 ID: R001 | Dennis | 事件: OVO Energy | 到期日: 2026-12-19 | 即將4日後到期
+🔵 ID: R007 | Dennis | 事件: MOT | 到期日: 2027-02-15 | 即將88日後到期
 ```
 
-每行為固定管線格式：`ID: {id} | {people} | 事件: {event} | 到期日: {expires_on} | 即將{days}日後到期`；`note` 不為空時附 `| {note}`。到期當日為 `| 今日到期`。缺跑日合併為该行以 `| 補發` 結尾（漏掉的點合併入同一行，無回溯時間戳）。電郵主旨為 `事件提醒 — YYYY-MM-DD`，內文與 Telegram 文字完全相同。
+（示例按 `expires_on` 由最早排到最晚：2026-11-19 → 2026-12-10 → 2026-12-19 → 2027-02-15。）
+
+多行訊息中間以一個空行分隔（純文字）／全寬深色分隔行（電郵 HTML）。欄位順序
+本身與鎖定規格一致：`ID: {id} | {people} | 事件: {event} | 到期日: {expires_on} | 即將{days}日後到期`；
+缺跑日該行以 `| 補發` 結尾；`note` 不為空時附於行尾 `| {note}`。
+
+### 4. 電郵格式（`multipart/alternative`）
+
+電郵內文為 `multipart/alternative`，含兩個部分：
+
+1. `text/plain` — 與 Telegram 文字完全相同（上方鎖定格式）；
+2. `text/html` — 灰色頁面上的白色卡片（`max-width:560px`），表格形式：左列為
+   **統一深色徽章**（底色 `#1f1f1f`、白字、emoji 保持原生顏色 🔴 🟠 🟡 🔵、
+   垂直置中）含 emoji＋剩餘日數；右列為詳情——粗體 `事件: …` 行、粗體
+   `到期日: …` 行（`ID` 維持常體）、`即將{N}日後到期` 中的日子數加粗＋底線＋
+   淺黃高亮（`#ffe082`，所有緊急度統一）、`⚠️ 補發` 紅色粗體、`note` 灰色細字。
+   事件之間以全寬深色分隔行（`2px solid #3c4043`）分隔（最後一條之後不設）。
+
+實際電郵不連結任何外部 CSS／字型（字型堆疊回退至客戶端 CJK 字型）：
+`-apple-system, 'Noto Sans SC', 'Noto Sans CJK SC', sans-serif`。電郵主旨保持
+純文字：`事件提醒 — YYYY-MM-DD`（無 emoji）。
 
 ## 使用／快速開始
 
@@ -64,7 +97,7 @@ touch data/run-now-dry         # 同上，惟為 dry-run pass
 python3 -m unittest discover -s tests -v
 ```
 
-全部 30 個驗收測試只用 Python stdlib、假日期與記憶體 fake senders——無網絡、無真實密碼。
+全部 37 個驗收測試只用 Python stdlib、假日期與記憶體 fake senders——無網絡、無真實密碼。
 
 ## Docker
 

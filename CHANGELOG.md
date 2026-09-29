@@ -3,7 +3,54 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 Version scheme: `MAJOR.MINOR.PATCH`.
 
-## [Unreleased] — initial implementation (2026-09-24)
+## [Unreleased]
+
+### Changed
+- Grouped message row order: ascending by `expires_on` (soonest-expiring
+  first; same `expires_on` → stable by `id`) instead of id order — the
+  live 2026-09-29 message showed rows in id order, which was confusing.
+  `TestGrouping` asserts the new order.
+- Email HTML redesign (user-approved v10): unified dark badge — background
+  `#1f1f1f`, white text, emoji keeps its native colour, vertically
+  centred (replaces the per-band coloured badges); full-width dark divider
+  row (`2px solid #3c4043`) between events, none after the last (replaces
+  the blank spacer row); the detail column now renders the `事件: …` line
+  fully bold and the `到期日: …` line bold (ID stays plain); the N-day
+  count in `即將{N}日後到期` is bold, underlined, and highlighted
+  `#ffe082` in every urgency band (🔴 0日 says `今日到期`, so has no
+  highlight); whitespace tightened (`line-height:1.35`, no blank line
+  between the `事件` and `到期日` lines) and the body sits in a white
+  card (`#ffffff` on a grey page). `TestMessageBuilder` asserts the new
+  markup.
+
+## [1.0.0] — 2026-09-28 — notification visuals + stable release
+
+### Added
+- Urgency emoji prefix on every reminder row (Telegram and the email
+  plain-text part — pure text; Telegram renders emoji in system colour):
+  🔴 = 0 days (today), 🟠 = 1–4, 🟡 = 5–30, 🔵 = > 30 (early-month point,
+  still labelled `即將{N}日後到期`).
+- Email body is now `multipart/alternative`: `text/plain` part identical to
+  the Telegram text (spec layout preserved) + a coloured `text/html` part
+  (table with a coloured badge column 🔴 `#e53935` / 🟠 `#fb8c00` /
+  🟡 `#fdd835` / 🔵 `#1e88e5`, bold `ID`, due-day line, `⚠️ 補發` red bold,
+  `note` grey small). No external CSS/font links in the real email; font
+  stack `-apple-system, 'Noto Sans SC', 'Noto Sans CJK SC', sans-serif`.
+- Spacer between multiple rows: one blank line (text) / spacer table row
+  (HTML).
+- 7 new tests in `TestMessageBuilder` (emoji bands, emoji prefix, blank-line
+  spacing, blue remaining-days phrasing, HTML badges & styling, multipart
+  structure) plus updated wire tests — total 37 tests.
+
+### Changed
+- `EmailSender.send()` now takes `body` as a `(plain, html)` tuple and
+  builds the message with `MIMEMultipart("alternative")` (plain part first,
+  html part second). The wire header for the Chinese subject is RFC 2047
+  encoded (normal for MIMEDeflater); test decodes it back.
+- `MessageBuilder.build(...)` returns the plain text/Telegram message, the
+  subject, and the `(plain, html)` body tuple instead of a single string.
+
+## [Unreleased — initial] — initial implementation (2026-09-24)
 
 ### Added
 - `bot.py`: daily 11:00 `Europe/London` loop (60 s sleep steps, DST-safe)

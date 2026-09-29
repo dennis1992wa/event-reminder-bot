@@ -104,8 +104,9 @@ def run_pass(
         # Mark first-seen now (so tomorrow it is no longer a new row)
         state.mark_first_seen(rec.id, rec.expires_on)
 
-    # Requirement: rows inside the same grouped message are in id order
-    due_rows.sort(key=lambda t: t[0])
+    # Rows inside the same grouped message are ordered by nearest
+    # expires_on first (ties broken by id).
+    due_rows.sort(key=lambda t: (t[1].expires_on, t[0]))
 
     total_lines = 0
     if due_rows:

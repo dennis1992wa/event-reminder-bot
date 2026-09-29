@@ -391,10 +391,170 @@ class TestGrouping(unittest.TestCase):
             text = tg.sent[0][0]
             self.assertIn("R151", text)
             self.assertIn("R152", text)
-            self.assertLess(text.find("R151"), text.find("R152"), "id order")
+            # Nearest expires_on first: R152 (2026-06-16) before R151 (2026-06-25)
+            self.assertLess(text.find("R152"), text.find("R151"), "expires_on order")
             subject, body = em.sent[0]
-            self.assertEqual(subject, "事件提醒 2026-05-26")
-            self.assertEqual(body, text)
+            self.assertEqual(subject, "事件提醒 — 2026-05-26")
+            # Email body is (plain, html): plain part == Telegram text,
+            # html part carries the same rows plus colour badges.
+            self.assertIsInstance(body, tuple)
+            self.assertEqual(body[0], text)
+            self.assertIn("R151", body[1])
+            self.assertIn("R152", body[1])
+            self.assertIn("</b>", body[1])  # bolded IDs in the HTML part
+
+
+# ---------------------------------------------------------------------------
+# Message formatting: emoji urgency, blank-line spacing, HTML email body
+# ---------------------------------------------------------------------------
+
+class TestMessageBuilder(unittest.TestCase):
+    def _rec(self, rid, expires, note=""):
+        import event_reminder as er
+        return er.EventRecord.from_row(make_row(rid, expires, note=note))
+
+    def _run(self, check, records):
+        import event_reminder as er
+        infos = [(r.id, r, er.DueInfo("standard", [], 0, r.expires_on_date))
+                 for r in records]
+        return er.MessageBuilder.build(check, infos)
+
+    def test_emoji_mapping_by_days(self):
+        import event_reminder as er
+        self.assertEqual(er.urgency_for_days(0)[0], "🔴")
+        self.assertEqual(er.urgency_for_days(1)[0], "🟠")
+        self.assertEqual(er.urgency_for_days(4)[0], "🟠")
+        self.assertEqual(er.urgency_for_days(5)[0], "🟡")
+        self.assertEqual(er.urgency_for_days(30)[0], "🟡")
+        self.assertEqual(er.urgency_for_days(31)[0], "🔵")
+        self.assertEqual(er.urgency_for_days(88)[0], "🔵")
+
+    def test_emoji_prefix_and_blank_line_spacing(self):
+        check = date(2026, 11, 19)
+        text, subject, body = self._run(check, [
+            self._rec("A1", "2026-11-19"),
+            self._rec("A2", "2026-12-19"),
+        ])
+        self.assertEqual(subject, "事件提醒 — 2026-11-19")
+        # Header first; every row prefixed with its urgency emoji.
+        self.assertTrue(text.startswith("事件提醒 — 2026-11-19\n"))
+        self.assertIn("\n🔴 ID: A1 |", text)
+        self.assertIn("\n🟡 ID: A2 |", text)  # 30 days out = yellow band
+        # One blank line between rows (two consecutive newlines).
+        self.assertIn("今日到期\n\n🟡 ID: A2", text)
+        # Plain part == telegram text.
+        self.assertEqual(body[0], text)
+
+    def test_blue_row_keeps_remaining_days_phrasing(self):
+        # >30 days: phrasing stays "即將<N>日後到期" (no "早期提醒").
+        check = date(2026, 11, 19)
+        text, _, _ = self._run(check, [self._rec("B1", "2027-02-15")])
+        self.assertIn("🔵 ID: B1 | 本人 | 事件: TestEvent | 到期日: 2027-02-15 | 即將88日後到期", text)
+        self.assertNotIn("早期提醒", text)
+
+    def test_html_has_badges_and_no_external_assets(self):
+        check = date(2026, 11, 19)
+        _, _, (_plain, html_body) = self._run(check, [
+            self._rec("C1", "2026-11-19"),
+            self._rec("C2", "2026-11-20"),
+            self._rec("C3", "2026-12-03"),
+            self._rec("C4", "2027-02-15"),
+        ])
+        # Badges are unified dark bg / white text (emoji keeps its native
+        # colour), vertically centred; the day count is highlighted #ffe082.
+        self.assertIn("background:#1f1f1f", html_body)
+        self.assertIn("vertical-align:middle", html_body)
+        self.assertIn("background:#ffe082", html_body)
+        # Full-width dark divider rows separate entries.
+        self.assertIn("border-top:2px solid #3c4043", html_body)
+        for badge in ("🔴 0日", "🟠 1日", "🟡 14日", "🔵 88日"):
+            self.assertIn(badge, html_body)
+        # Bold rules: 事件 + 到期日 lines bold, ID plain.
+        self.assertIn("<b>事件: TestEvent</b>", html_body)
+        self.assertIn("<b>到期日: 2026-11-19</b>", html_body)
+        self.assertNotIn("<b>ID: C1</b>", html_body)
+        # No external assets / stylesheets (offline-safe).
+        self.assertNotIn("<link", html_body)
+        self.assertNotIn("<style>", html_body)
+        self.assertNotIn("url(", html_body)
+        # All field values present and HTML-escaped where needed.
+        self.assertIn("ID: C1", html_body)
+        self.assertIn("ID: C4", html_body)
+
+    def test_html_note_shown_in_grey_small(self):
+        check = date(2026, 11, 19)
+        _, _, (_plain, html_body) = self._run(check, [
+            self._rec("D1", "2026-11-19", note="續約, 收錢, 記賬"),
+        ])
+        self.assertIn("color:#80868b", html_body)
+        self.assertIn("續約, 收錢, 記賬", html_body)
+
+    def test_note_appended_to_plain_line(self):
+        check = date(2026, 11, 19)
+        text, _, _ = self._run(check, [
+            self._rec("E1", "2026-11-19", note="續約, 收錢, 記賬"),
+        ])
+        self.assertIn("ID: E1 |", text)
+        self.assertTrue(text.strip().endswith("續約, 收錢, 記賬"))
+
+
+class TestEmailSenderMultipart(unittest.TestCase):
+    def test_send_builds_multipart_alternative(self):
+        import email as email_mod
+        import event_reminder as er
+        import smtplib
+        captured = {}
+
+        class FakeServer:
+            def __init__(self, host, port, timeout=None):
+                pass
+            def __enter__(self):
+                return self
+            def __exit__(self, *exc):
+                return False
+            def ehlo(self):
+                pass
+            def starttls(self, context=None):
+                pass
+            def login(self, user, password):
+                pass
+            def sendmail(self, from_addr, to_addrs, msg):
+                captured["msg"] = msg
+                captured["to"] = to_addrs
+
+        orig = smtplib.SMTP
+        smtplib.SMTP = FakeServer
+        try:
+            em = er.EmailSender(
+                host="smtp.gmail.com", port=587, user="u", password="p",
+                sender_email="f@x.com", to_email="a@x.com, b@x.com",
+            )
+            ok = em.send(
+                "事件提醒 — 2026-11-19",
+                ("🔴 ID: R001 | 本人 | 事件: OVO | 到期日: 2026-11-19 | 今日到期",
+                 '<div><b>ID: R001</b> | 本人</div>'),
+            )
+        finally:
+            smtplib.SMTP = orig
+        self.assertTrue(ok)
+        wire = captured["msg"]
+        self.assertIsInstance(wire, (bytes, bytearray))
+        msg = email_mod.message_from_bytes(wire)
+        self.assertTrue(msg.is_multipart())
+        self.assertEqual(msg.get_content_type(), "multipart/alternative")
+        parts = msg.get_payload()
+        self.assertEqual([p.get_content_type() for p in parts],
+                         ["text/plain", "text/html"])
+        self.assertIn("ID: R001", parts[0].get_payload(decode=True).decode("utf-8"))
+        self.assertIn("<b>ID: R001</b>", parts[1].get_payload(decode=True).decode("utf-8"))
+        # Subject is RFC 2047 encoded on the wire; decode it back.
+        from email.header import decode_header
+        self.assertEqual(
+            "".join(part.decode(c or "utf-8") for part, c in decode_header(msg["Subject"])),
+            "事件提醒 — 2026-11-19",
+        )
+        # Both recipients on the wire.
+        self.assertIn(b"a@x.com, b@x.com", wire)
 
 
 # ---------------------------------------------------------------------------
@@ -561,8 +721,9 @@ class TestEmailRecipients(unittest.TestCase):
                 sender_email="f@x.com", to_email="a@x.com, b@x.com",
             )
             ok = em.send("事件提醒 — 2026-09-24",
-                         "ID: R001 | 本人 | 事件: OVO Energy | 到期日: 2026-12-19 | "
-                         "將30日後到期")
+                         ("ID: R001 | 本人 | 事件: OVO Energy | 到期日: 2026-12-19 | "
+                          "將30日後到期",
+                          "<b>ID: R001</b>"))
         finally:
             smtplib.SMTP = orig
         self.assertTrue(ok)
@@ -573,9 +734,12 @@ class TestEmailRecipients(unittest.TestCase):
         self.assertIn(b"=?utf-8?", wire)
         self.assertIn(b"a@x.com, b@x.com", wire)
         from email import message_from_bytes
-        payload = message_from_bytes(wire).get_payload(decode=True)
-        self.assertIn("ID: R001 | 本人 | 事件: OVO Energy",
-                      payload.decode("utf-8"))
+        msg = message_from_bytes(wire)
+        # Multipart: concatenate the decoded parts (plain + html both carry it).
+        payload = b"".join(
+            p.get_payload(decode=True) or b"" for p in msg.get_payload()
+        )
+        self.assertIn("ID: R001 | 本人 | 事件: OVO Energy".encode("utf-8"), payload)
 
 
 # ---------------------------------------------------------------------------
