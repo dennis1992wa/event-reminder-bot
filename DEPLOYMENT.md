@@ -67,6 +67,7 @@ rebuilt and restarted:
    ```bash
    ssh <nas username>@<nas ip address> -p <ssh port number>
    cd /volume1/docker/event-reminder-bot
+   sudo su
    docker compose down
    docker compose build
    docker compose up -d
@@ -100,6 +101,8 @@ stable, live reminder sends verified. See the CHANGELOG.
    due date falls inside the reminder window, wait for the run (or use
    `OVERRIDE_TODAY` in `data/.env` and restart the container), and
    confirm the Telegram + email message arrive. Remove the test row after.
+5. run the actual test with telegram and email notification 
+`docker exec event-reminder-bot python /app/bot.py --once`
 
 ## Rollback / recovery
 
